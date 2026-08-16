@@ -112,7 +112,11 @@ export default function App() {
           noVisible={noVisible}
           noPosition={noPosition}
           noButtonRef={noButtonRef}
-          message={noMessages[Math.min(noCount, noMessages.length - 1)]}
+          message={
+  noCount === 0
+    ? '하늘 아래 우리만의 하루를 만들어봐요.'
+    : noMessages[Math.min(noCount - 1, noMessages.length - 1)]
+}
           onYes={() => setStep(1)}
           onNo={escapeNo}
         />
