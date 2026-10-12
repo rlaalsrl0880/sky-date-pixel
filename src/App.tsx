@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { supabase } from './lib/supabaseClient'
+import Dashboard from './Dashboard'
 
 type DatePlan = {
   date: string
@@ -23,6 +24,29 @@ const activities = ['🍰 맛있는 거 먹기', '🎬 영화 보기', '🌳 산
 const times = ['12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00']
 
 export default function App() {
+  const token = new URLSearchParams(window.location.search).get('invite')
+  if (!token) return <Dashboard />
+  return <InvitationGate token={token} />
+}
+
+function InvitationGate({token}:{token:string}) {
+  const [state,setState]=useState<'loading'|'ready'|'answered'|'error'>('loading')
+  useEffect(()=>{
+    let active=true
+    supabase.rpc('get_public_invitation',{p_token:token}).then(({data,error})=>{
+      if(!active)return
+      if(error || !data || !Array.isArray(data) || data.length===0) setState('error')
+      else setState(data[0].answered?'answered':'ready')
+    })
+    return ()=>{active=false}
+  },[token])
+  if(state==='loading')return <main className="app"><section className="screen"><p className="eyebrow">☁️ LOADING</p><h2>초대장을 여는 중...</h2></section></main>
+  if(state==='error')return <main className="app"><section className="screen"><h2>초대장을 찾을 수 없어요 ☁️</h2><p>링크를 다시 확인해주세요.</p></section></main>
+  if(state==='answered')return <main className="app"><section className="screen"><h2>이미 답변이 도착한 초대장이에요 ♡</h2><p>이 초대장은 한 번만 제출할 수 있어요.</p></section></main>
+  return <DateApp token={token} />
+}
+
+function DateApp({token}:{token:string}) {
   const [step, setStep] = useState(0)
   const [noCount, setNoCount] = useState(0)
   const [noVisible, setNoVisible] = useState(true)
@@ -75,11 +99,12 @@ export default function App() {
   const savePlan = async () => {
     setSaving(true)
     setSaveError('')
-    const { error } = await supabase.from('date_plans').insert({
-      date: plan.date,
-      time: plan.time,
-      activities: plan.activities,
-      message: plan.message,
+    const { error } = await supabase.rpc('submit_invitation_response', {
+      p_token: token,
+      p_date: plan.date,
+      p_time: plan.time,
+      p_activities: plan.activities,
+      p_message: plan.message,
     })
     setSaving(false)
     if (error) {
@@ -88,15 +113,6 @@ export default function App() {
       return
     }
     setStep(7)
-  }
-
-  const reset = () => {
-    setStep(0)
-    setNoCount(0)
-    setNoVisible(true)
-    setNoPosition({ x: 0, y: 0 })
-    setSaveError('')
-    setPlan({ date: '', time: '', activities: [], message: '' })
   }
 
   const back = () => setStep(s => Math.max(0, s - 1))
@@ -112,11 +128,7 @@ export default function App() {
           noVisible={noVisible}
           noPosition={noPosition}
           noButtonRef={noButtonRef}
-          message={
-  noCount === 0
-    ? '하늘 아래 우리만의 하루를 만들어봐요.'
-    : noMessages[Math.min(noCount - 1, noMessages.length - 1)]
-}
+          message={noCount === 0 ? '하늘 아래 우리만의 하루를 만들어봐요.' : noMessages[Math.min(noCount - 1, noMessages.length - 1)]}
           onYes={() => setStep(1)}
           onNo={escapeNo}
         />
@@ -126,7 +138,7 @@ export default function App() {
       {step === 3 && <ActivityScreen values={plan.activities} onChange={v => updatePlan('activities', v)} onNext={() => setStep(4)} />}
       {step === 4 && <MessageScreen value={plan.message} onChange={v => updatePlan('message', v)} onNext={() => setStep(5)} />}
       {step === 5 && <SummaryScreen plan={plan} onEdit={() => setStep(4)} onConfirm={savePlan} saving={saving} error={saveError} />}
-      {step === 7 && <FinalScreen plan={plan} onReset={reset} />}
+      {step === 7 && <FinalScreen plan={plan} />}
     </main>
   )
 }
@@ -185,12 +197,12 @@ function SummaryScreen({plan,onEdit,onConfirm,saving,error}:{plan:DatePlan;onEdi
   </section>
 }
 
-function FinalScreen({plan,onReset}:{plan:DatePlan;onReset:()=>void}) {
+function FinalScreen({plan}:{plan:DatePlan}) {
   return <section className="screen final"><div className="confetti">✦　☁️　✧　♡　✦</div>
     <div className="pixel-card final-card"><p className="eyebrow">OUR SPECIAL DAY</p><h2>우리의 특별한 하루</h2>
       <p>{plan.date} · {plan.time}</p><p>{plan.activities.join(' · ')}</p>
       <div className="message-bubble">{plan.message || '오늘은 우리 둘만의 특별한 날이에요 ♡'}</div><h3>그날 만나요 ♡</h3>
-    </div><button className="reset" onClick={onReset}>처음부터 다시 하기</button></section>
+    </div><p className="success-note">답변이 전달됐어요 ☁️</p></section>
 }
 
 function NextButton({disabled=false,onClick}:{disabled?:boolean;onClick:()=>void}) {
